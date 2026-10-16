@@ -228,6 +228,7 @@ game.finish=()=>{originalFinish();if(!game.rankedThisRun)$('#score-submit').clas
 $('#leaderboard-open').setAttribute('aria-label','打开共享排行榜');
 updateModeDialog();
 </script><script>window.NAIWA_LEADERBOARD = {
+  proxyUrl: 'https://jolly-rabanadas-719a73.netlify.app',
   url: 'https://vvtuyazgatcgnjixmyvu.supabase.co',
   anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ2dHV5YXpnYXRjZ25qaXhteXZ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIwNzU2NDAsImV4cCI6MjEwNzY1MTY0MH0.7p-7EHkuwvyG2F3DLejxeL8FozB4ROJFU88LrRTIx3c'
 };
@@ -237,9 +238,60 @@ updateModeDialog();
   const config = window.NAIWA_LEADERBOARD || {};
   let boardMode = 'classic';
   let sending = false;
+  let loadVersion = 0;
 
   const configured = () => /^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(config.url || '') && Boolean(config.anonKey);
   const headers = () => ({ apikey: config.anonKey, Authorization: `Bearer ${config.anonKey}` });
+
+  async function request(query = '', options = {}) {
+    const bases = [...new Set([config.proxyUrl, config.url].filter(Boolean))];
+    let lastError;
+    // A score POST is never retried automatically: a lost response may still mean it was saved.
+    const attempts = options.method === 'POST' ? 1 : Math.max(2, bases.length);
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      const base = bases[attempt % bases.length].replace(/\/$/, '');
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10000);
+      try {
+        const response = await fetch(`${base}/rest/v1/leaderboard_entries${query}`, {
+          ...options, headers: { ...headers(), ...options.headers }, signal: controller.signal,
+          cache: 'no-store'
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        // Read the body while the timeout is active, including on slow mobile connections.
+        const body = options.method === 'POST' ? await response.text() : await response.json();
+        return body;
+      } catch (error) {
+        lastError = error;
+        if (options.method === 'POST') throw error;
+      } finally { clearTimeout(timer); }
+    }
+    throw lastError;
+  }
+
+  function cachedBoard(mode) {
+    try {
+      const value = JSON.parse(localStorage.getItem(`naiwa-board-${mode}`));
+      return value && Array.isArray(value.rows) && Number.isFinite(value.time) ? value : null;
+    } catch { return null; }
+  }
+
+  function renderRows(rows) {
+    const list = $('#leaderboard-list');
+    list.replaceChildren();
+    for (const [index, row] of rows.entries()) {
+      const li = document.createElement('li');
+      const who = document.createElement('span');
+      const points = document.createElement('strong');
+      const date = document.createElement('time');
+      who.textContent = `${index + 1}. ${row.player_name}`;
+      points.textContent = Number(row.score).toLocaleString('zh-CN');
+      date.textContent = new Date(row.created_at).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
+      date.dateTime = row.created_at;
+      li.append(who, points, date);
+      list.append(li);
+    }
+  }
 
   function showConfigState() {
     $('#leaderboard-status').textContent = '共享排行榜正在配置中';
@@ -249,34 +301,29 @@ updateModeDialog();
 
   async function loadBoard() {
     if (!configured()) return showConfigState();
-    $('#leaderboard-status').textContent = '正在加载排行榜…';
+    const version = ++loadVersion;
+    const mode = boardMode;
+    const cached = cachedBoard(mode);
+    renderRows(cached?.rows || []);
+    $('#leaderboard-status').textContent = cached ? '显示上次排名，正在更新…' : '正在加载排行榜，网络较慢时会自动重试…';
     try {
       const query = new URLSearchParams({
         select: 'player_name,score,created_at',
-        mode: `eq.${boardMode}`,
+        mode: `eq.${mode}`,
         order: 'score.desc,created_at.asc',
         limit: '100'
       });
-      const response = await fetch(`${config.url}/rest/v1/leaderboard_entries?${query}`, { headers: headers() });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const rows = await response.json();
-      const list = $('#leaderboard-list');
-      list.replaceChildren();
-      for (const [index, row] of rows.entries()) {
-        const li = document.createElement('li');
-        const who = document.createElement('span');
-        const points = document.createElement('strong');
-        const date = document.createElement('time');
-        who.textContent = `${index + 1}. ${row.player_name}`;
-        points.textContent = Number(row.score).toLocaleString('zh-CN');
-        date.textContent = new Date(row.created_at).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
-        date.dateTime = row.created_at;
-        li.append(who, points, date);
-        list.append(li);
-      }
+      const rows = await request(`?${query}`);
+      if (!Array.isArray(rows)) throw new Error('Invalid leaderboard response');
+      try { localStorage.setItem(`naiwa-board-${mode}`, JSON.stringify({rows,time:Date.now()})); } catch {}
+      if (version !== loadVersion) return;
+      renderRows(rows);
       $('#leaderboard-status').textContent = rows.length ? '' : '还没有成绩，来拿下第一名';
     } catch (error) {
-      $('#leaderboard-status').textContent = '排行榜暂时无法连接，请稍后重试';
+      if (version !== loadVersion) return;
+      $('#leaderboard-status').textContent = cached
+        ? `网络暂不可用，显示 ${new Date(cached.time).toLocaleString('zh-CN')} 缓存的排名，并非实时榜单`
+        : '排行榜网络连接失败，已有排名仍保存在数据库中，请稍后重新加载';
       console.error('排行榜加载失败', error);
     }
   }
@@ -298,7 +345,7 @@ updateModeDialog();
     $('#submit-score').disabled = true;
     $('#submit-status').textContent = '正在提交…';
     try {
-      const response = await fetch(`${config.url}/rest/v1/leaderboard_entries`, {
+      await request('', {
         method: 'POST',
         headers: { ...headers(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
         body: JSON.stringify({
@@ -308,13 +355,12 @@ updateModeDialog();
           difficulty: game.difficulty
         })
       });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       try { localStorage.setItem('naiwa-player-name', name); } catch {}
       $('#submit-status').textContent = '已加入共享排行榜';
       boardMode = game.mode;
       await loadBoard();
     } catch (error) {
-      $('#submit-status').textContent = '提交失败，请检查网络后重试';
+      $('#submit-status').textContent = '未收到提交确认，请先查看排行榜是否已有本次成绩，再决定是否重试';
       $('#submit-score').disabled = false;
       console.error('分数提交失败', error);
     } finally {
@@ -336,6 +382,9 @@ updateModeDialog();
     loadBoard();
   }));
   $('#submit-score').addEventListener('click', submitScore);
+  addEventListener('online', () => {
+    if (!$('#leaderboard-dialog').classList.contains('hidden')) loadBoard();
+  });
   $('#player-name').addEventListener('keydown', (event) => { if (event.key === 'Enter') submitScore(); });
   try { $('#player-name').value = localStorage.getItem('naiwa-player-name') || ''; } catch {}
 })();
