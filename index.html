@@ -64,6 +64,7 @@ nav #leaderboard-open{border-color:#e7f49a55;color:#e7f49a}
 .home-mode nav #leaderboard-open{width:46px;height:46px;padding:0;border-radius:50%;font-size:0;display:grid;place-items:center;background:#ffffff0c}
 .home-mode nav #leaderboard-open::before{content:"🏆";font-size:20px}
 .home-mode nav #voices,.home-mode nav #sound,.home-mode nav #pause,.home-mode nav #phone{display:none}
+#cast-list[hidden]{display:none!important}
 .mode-card{position:relative;width:min(100%,460px);max-height:min(92%,720px);overflow:auto;padding:30px;text-align:left}
 .mode-card h2{text-align:center;margin-bottom:14px}
 .mode-card .eyebrow{text-align:center;margin-bottom:10px}
@@ -101,6 +102,29 @@ nav #leaderboard-open{border-color:#e7f49a55;color:#e7f49a}
  .home-mode nav #leaderboard-open{width:38px;height:38px}
  #mode-dialog{inset:0}
  .mode-card{padding:26px 20px}
+ .mode-card .difficulty-title{display:block}
+ .mode-card .difficulty-title span{display:block;max-width:none;margin-top:4px;text-align:left}
+}
+@media(max-width:700px) and (max-height:700px){
+ .home-title{top:2%}
+ .home-title p{max-width:220px}
+ .home-hero{inset:15% 4% 27%}
+ .home-hero .hero-main{height:min(38vh,230px)}
+ .home-hero .hero-caption,.home-hero .hero-note{display:none}
+ .home-hero .hero-small.egg{top:25%}
+ .home-hero .hero-small.chicken{bottom:15%}
+ .home-hero .hero-sticker{top:9%}
+ .home-actions{bottom:max(16px,calc(env(safe-area-inset-bottom) + 10px));gap:8px;width:90%}
+ .home-mode-button{min-height:56px;padding:8px 10px}
+ .mode-card{padding:22px 18px}
+ .mode-card h2{font-size:25px;margin-bottom:10px}
+ .mode-card>p{min-height:0;margin-bottom:9px}
+ .rank-option{padding:9px 10px;margin-bottom:9px}
+ .mode-card .difficulty-panel{margin-bottom:8px}
+ .mode-card .difficulty-picker button{padding:6px 3px}
+ .mode-card .interval-label{margin-top:7px}
+ .mode-card #spawn-interval{margin-top:5px}
+ .mode-card #start{margin:5px 0 2px;padding:12px 18px}
 }
 </style></head>
 <body><main id="app" class="home-mode">
